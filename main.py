@@ -220,48 +220,7 @@ def chat_get(api_key: str, message: str):
 # ──────────────────────────────────────────────
 # POST Chat Endpoint
 # ──────────────────────────────────────────────
-@app.post("/chat")
-def chat_post(request: ChatRequest):
 
-    # Validate API key
-    if not request.api_key.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="Gemini API key cannot be empty."
-        )
-
-    # Validate message
-    if not request.message.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="Message cannot be empty."
-        )
-
-    try:
-
-        response_text = generate_archer_response(
-            request.api_key,
-            request.message
-        )
-
-        return {
-            "response": response_text,
-            "model": "gemini-2.5-flash",
-            "scope": "Archer GRC Platform"
-        }
-
-    except Exception as e:
-
-        error_msg = str(e)
-
-        print("\n========== GEMINI ERROR ==========")
-        print(error_msg)
-        print("==================================\n")
-
-        raise HTTPException(
-            status_code=500,
-            detail=error_msg
-        )
 
 
 # ──────────────────────────────────────────────
