@@ -52,11 +52,14 @@ Mention SaaS vs On-Prem differences when relevant.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 RESPONSE RULES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- Keep ALL responses under 100 words
-- Give complete answers
-- Be concise and professional
-- Use bullets or numbered steps when useful
+- Responses must be COMPLETE and informative
+- Keep responses concise but not truncated
+- Target approximately 80–100 words
+- Use numbered steps or bullets when useful
 - Start directly with the answer
+- Use professional Archer GRC terminology
+- Never leave incomplete sentences
+- Always finish the response naturally
 - End with:
   "Would you like more detail on any step?"
 """
@@ -80,17 +83,11 @@ app.add_middleware(
 
 
 # ──────────────────────────────────────────────
-# Request / Response Models
+# Request Model (POST)
 # ──────────────────────────────────────────────
 class ChatRequest(BaseModel):
     api_key: str
     message: str
-
-
-class ChatResponse(BaseModel):
-    response: str
-    model: str = "gemini-2.5-flash"
-    scope: str = "Archer GRC Platform"
 
 
 # ──────────────────────────────────────────────
@@ -103,7 +100,8 @@ def root():
         "description": "Ask anything about the Archer GRC platform.",
         "docs": "/docs",
         "endpoints": {
-            "POST /chat": "Single-turn Archer GRC chat",
+            "GET /chat": "Chat using query parameters",
+            "POST /chat": "Chat using JSON body",
             "GET /health": "Health check",
             "GET /topics": "Supported Archer GRC topics",
         },
@@ -148,10 +146,82 @@ def topics():
 
 
 # ──────────────────────────────────────────────
-# Chat Endpoint
+# Shared Gemini Function
 # ──────────────────────────────────────────────
-@app.post("/chat", response_model=ChatResponse)
-def chat(request: ChatRequest):
+def generate_archer_response(api_key: str, message: str):
+
+    # Configure Gemini SDK
+    genai.configure(api_key=api_key)
+
+    # Load Gemini model
+    model = genai.GenerativeModel(
+        model_name="gemini-2.5-flash",
+        system_instruction=ARCHER_GRC_SYSTEM_PROMPT,
+    )
+
+    # Generate response
+    response = model.generate_content(
+        message,
+        generation_config={
+            "temperature": 0.2,
+            "max_output_tokens": 300,
+        }
+    )
+
+    return response.text.strip()
+
+
+# ──────────────────────────────────────────────
+# GET Chat Endpoint
+# Example:
+# /chat?api_key=KEY&message=How do I create a Data Feed?
+# ──────────────────────────────────────────────
+@app.get("/chat")
+def chat_get(api_key: str, message: str):
+
+    # Validate API key
+    if not api_key.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Gemini API key cannot be empty."
+        )
+
+    # Validate message
+    if not message.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Message cannot be empty."
+        )
+
+    try:
+
+        response_text = generate_archer_response(api_key, message)
+
+        return {
+            "response": response_text,
+            "model": "gemini-2.5-flash",
+            "scope": "Archer GRC Platform"
+        }
+
+    except Exception as e:
+
+        error_msg = str(e)
+
+        print("\n========== GEMINI ERROR ==========")
+        print(error_msg)
+        print("==================================\n")
+
+        raise HTTPException(
+            status_code=500,
+            detail=error_msg
+        )
+
+
+# ──────────────────────────────────────────────
+# POST Chat Endpoint
+# ──────────────────────────────────────────────
+@app.post("/chat")
+def chat_post(request: ChatRequest):
 
     # Validate API key
     if not request.api_key.strip():
@@ -167,35 +237,18 @@ def chat(request: ChatRequest):
             detail="Message cannot be empty."
         )
 
-    # Limit message size
-    if len(request.message) > 5000:
-        raise HTTPException(
-            status_code=400,
-            detail="Message too long."
-        )
-
     try:
-        # Configure Gemini SDK
-        genai.configure(api_key=request.api_key)
 
-        # Load Gemini model
-        model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
-            system_instruction=ARCHER_GRC_SYSTEM_PROMPT,
+        response_text = generate_archer_response(
+            request.api_key,
+            request.message
         )
 
-        # Generate response
-        response = model.generate_content(
-            request.message,
-            generation_config={
-                "temperature": 0.2,
-                "max_output_tokens": 1000,
-            }
-        )
-
-        response_text = response.text.strip()
-
-        return ChatResponse(response=response_text)
+        return {
+            "response": response_text,
+            "model": "gemini-2.5-flash",
+            "scope": "Archer GRC Platform"
+        }
 
     except Exception as e:
 
@@ -205,45 +258,10 @@ def chat(request: ChatRequest):
         print(error_msg)
         print("==================================\n")
 
-        error_lower = error_msg.lower()
-
-        # Invalid API key
-        if any(x in error_lower for x in [
-            "api_key_invalid",
-            "401",
-            "403"
-        ]):
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid Gemini API key."
-            )
-
-        # Rate limit / quota exceeded
-        elif any(x in error_lower for x in [
-            "429",
-            "quota",
-            "resourceexhausted",
-            "rate limit",
-            "too many requests"
-        ]):
-            raise HTTPException(
-                status_code=429,
-                detail="Gemini API rate limit exceeded."
-            )
-
-        # Model not found
-        elif "404" in error_lower or "not_found" in error_lower:
-            raise HTTPException(
-                status_code=404,
-                detail="Gemini model not found or unsupported."
-            )
-
-        # Generic error
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail=error_msg
-            )
+        raise HTTPException(
+            status_code=500,
+            detail=error_msg
+        )
 
 
 # ──────────────────────────────────────────────
@@ -252,6 +270,10 @@ def chat(request: ChatRequest):
 #
 # Save as: main.py
 #
+# Install:
+#
+# pip install -r requirements.txt
+#
 # Run:
 #
 # uvicorn main:app --reload
@@ -259,4 +281,8 @@ def chat(request: ChatRequest):
 # Swagger Docs:
 #
 # http://127.0.0.1:8000/docs
+#
+# Example GET Request:
+#
+# http://127.0.0.1:8000/chat?api_key=YOUR_KEY&message=How do I create a Data Feed in Archer?
 #
