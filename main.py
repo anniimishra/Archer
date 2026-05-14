@@ -53,7 +53,6 @@ Mention SaaS vs On-Prem differences when relevant.
 RESPONSE RULES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 - Responses must be COMPLETE and informative
-- Keep responses concise but not truncated
 - Target approximately 80–100 words
 - Use numbered steps or bullets when useful
 - Start directly with the answer
@@ -62,6 +61,7 @@ RESPONSE RULES
 - Always finish the response naturally
 - End with:
   "Would you like more detail on any step?"
+- Remember one thing give detailed explanation about the topic with 250 words
 """
 
 
@@ -163,8 +163,8 @@ def generate_archer_response(api_key: str, message: str):
     response = model.generate_content(
         message,
         generation_config={
-            "temperature": 0.2,
-            "max_output_tokens": 300,
+            "temperature": 0.5,
+            "max_output_tokens": 500,
         }
     )
 
